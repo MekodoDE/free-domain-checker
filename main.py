@@ -177,7 +177,7 @@ Domain Checker Bot
                     logger.warning(f"Could not determine availability for {domain}")
                 
                 # Small delay between checks to be respectful to whois servers
-                time.sleep(2)
+                time.sleep(0.1)
                 
             except Exception as e:
                 logger.error(f"Error processing domain {domain}: {e}")
