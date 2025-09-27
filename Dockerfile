@@ -5,9 +5,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies for whois functionality
-RUN apt-get update && apt-get install -y \
-    whois \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better Docker layer caching
 COPY requirements.txt .

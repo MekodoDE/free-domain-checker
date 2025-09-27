@@ -16,11 +16,7 @@ from email.mime.multipart import MIMEMultipart
 from typing import List, Optional
 from datetime import datetime
 
-try:
-    import whois
-except ImportError:
-    print("ERROR: python-whois library not found. Please install it with: pip install python-whois")
-    sys.exit(1)
+# No whois library used — DNS resolution only
 
 
 # Configure logging
@@ -97,59 +93,40 @@ class DomainChecker:
         """
         try:
             logger.info(f"Checking domain: {domain}")
-            
-            # First, try to resolve the domain
+
+            # Try to resolve the domain: if it resolves, it's likely taken
             try:
                 socket.gethostbyname(domain)
                 logger.info(f"Domain {domain} resolves to an IP address (likely taken)")
                 return False
             except socket.gaierror:
-                # Domain doesn't resolve, continue with whois check
-                pass
-            
-            # Check whois information
-            domain_info = whois.whois(domain)
-            
-            # If we get a result, the domain is likely registered
-            if domain_info and domain_info.domain_name:
-                logger.info(f"Domain {domain} is registered")
-                return False
-            else:
-                logger.info(f"Domain {domain} appears to be available")
+                # Domain doesn't resolve -> probably available
+                logger.info(f"Domain {domain} appears to be available (no DNS record)")
                 return True
-                
-        except whois.parser.PywhoisError as e:
-            if "No match" in str(e) or "No entries found" in str(e):
-                logger.info(f"Domain {domain} appears to be available (whois: no match)")
-                return True
-            else:
-                logger.warning(f"Whois error for {domain}: {e}")
-                return None
+
         except Exception as e:
             logger.error(f"Error checking domain {domain}: {e}")
             return None
-    
+
     def send_email_notification(self, available_domains: List[str]) -> bool:
         """Send email notification for available domains."""
         try:
             logger.info(f"Sending email notification for {len(available_domains)} available domains")
-            
-            # Create message
+
             msg = MIMEMultipart()
             msg['From'] = self.smtp_config['from_email']
             msg['To'] = self.smtp_config['to_email']
             msg['Subject'] = f"Free Domains Found - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-            
-            # Create email body
+
             body = f"""
 Hello!
 
 The domain checker has found {len(available_domains)} available domain(s):
 
 """
-            for domain in available_domains:
-                body += f"• {domain}\n"
-            
+            for d in available_domains:
+                body += f"• {d}\n"
+
             body += f"""
 
 Check performed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -159,20 +136,19 @@ Please verify availability manually before attempting to register.
 Best regards,
 Domain Checker Bot
 """
-            
+
             msg.attach(MIMEText(body, 'plain'))
-            
-            # Send email
+
             server = smtplib.SMTP(self.smtp_config['host'], self.smtp_config['port'])
             if self.smtp_config['use_tls']:
                 server.starttls()
             server.login(self.smtp_config['username'], self.smtp_config['password'])
             server.send_message(msg)
             server.quit()
-            
+
             logger.info("Email notification sent successfully")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to send email notification: {e}")
             return False
