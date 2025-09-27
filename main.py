@@ -33,12 +33,19 @@ class DomainChecker:
         self.smtp_config = self._get_smtp_config()
         
     def _get_domains_from_env(self) -> List[str]:
-        """Get domains from environment variables."""
-        # Read domains from DOMAINS environment variable
-        raw = os.getenv('DOMAINS', '')
+        """Get domains from a mounted file specified by DOMAINS_FILE (recommended for large lists)."""
+        # default path changed to a conventional config mount path
+        domains_file = os.getenv('DOMAINS_FILE', '/domains')
 
-        if not raw:
-            logger.error("No domains specified. Set the DOMAINS environment variable.")
+        if not os.path.exists(domains_file):
+            logger.error(f"Domains file not found: {domains_file}. Mount a ConfigMap/Secret at this path and set DOMAINS_FILE if needed.")
+            sys.exit(1)
+
+        try:
+            with open(domains_file, 'r', encoding='utf-8') as fh:
+                raw = fh.read()
+        except Exception as e:
+            logger.error(f"Failed to read domains file {domains_file}: {e}")
             sys.exit(1)
 
         # Accept newline-separated, comma-separated, semicolon-separated, or whitespace-separated lists
@@ -58,7 +65,7 @@ class DomainChecker:
             domains.append(ln)
 
         if not domains:
-            logger.error("No valid domains found in DOMAINS environment variable.")
+            logger.error(f"No valid domains found in domains file: {domains_file}")
             sys.exit(1)
 
         logger.info(f"Loaded {len(domains)} domains to check: {', '.join(domains)}")

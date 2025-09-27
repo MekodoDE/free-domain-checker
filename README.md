@@ -131,8 +131,9 @@ spec:
                - name: domain-checker
                   image: your-registry/free-domain-checker:latest
                   env:
-                     - name: DOMAINS
-                        value: "example.de,mydomain.de"
+                           # Recommended: mount domains as a file via ConfigMap and reference it via DOMAINS_FILE
+                           - name: DOMAINS_FILE
+                              value: "/domains"
                      - name: SMTP_HOST
                         value: "smtp.gmail.com"
                      - name: SMTP_PORT
@@ -142,7 +143,7 @@ spec:
                            secretKeyRef:
                               name: smtp-credentials
                               key: username
-                     - name: SMTP_PASSWORD
+                              - name: SMTP_PASSWORD
                         valueFrom:
                            secretKeyRef:
                               name: smtp-credentials
@@ -155,6 +156,44 @@ spec:
                         value: "true"
                restartPolicy: OnFailure
                # Use serviceAccountName, nodeSelector, tolerations, etc. as required
+
+      Example ConfigMap (mount as a file):
+
+      ```yaml
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+         name: free-domain-checker-config
+      data:
+         domains: |-
+            # One domain per line. Lines starting with '#' are ignored by the checker.
+            freimuth.de
+            tokio.de
+            tokyo.de
+            kyoto.de
+            koriyama.de
+      ```
+
+      Mount the ConfigMap as a file in the CronJob pod and set `DOMAINS_FILE` to the mount path (example):
+
+      ```yaml
+      volumes:
+         - name: domains
+            configMap:
+               name: free-domain-checker-config
+               items:
+                  - key: domains
+                     path: domains
+
+      volumeMounts:
+         - name: domains
+            mountPath: /domains
+            readOnly: true
+
+      env:
+         - name: DOMAINS_FILE
+            value: /domains
+      ```
 ```
 
 Notes:
