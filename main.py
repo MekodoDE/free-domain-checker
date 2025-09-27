@@ -38,18 +38,33 @@ class DomainChecker:
         
     def _get_domains_from_env(self) -> List[str]:
         """Get domains from environment variables."""
-        domains_str = os.getenv('DOMAINS', '')
-        if not domains_str:
-            logger.error("No domains specified. Set DOMAINS environment variable.")
+        # Read domains from DOMAINS environment variable
+        raw = os.getenv('DOMAINS', '')
+
+        if not raw:
+            logger.error("No domains specified. Set the DOMAINS environment variable.")
             sys.exit(1)
-            
-        # Split by comma and clean up
-        domains = [domain.strip() for domain in domains_str.split(',') if domain.strip()]
-        
+
+        # Accept newline-separated, comma-separated, semicolon-separated, or whitespace-separated lists
+        # Normalize separators to newlines then split
+        for part in [',', ';', '\r', '\t']:
+            raw = raw.replace(part, '\n')
+
+        # Parse lines, ignore empty lines and lines starting with '#'
+        domains = []
+        for line in raw.splitlines():
+            ln = line.strip()
+            if not ln:
+                continue
+            if ln.startswith('#'):
+                # skip comment lines
+                continue
+            domains.append(ln)
+
         if not domains:
             logger.error("No valid domains found in DOMAINS environment variable.")
             sys.exit(1)
-            
+
         logger.info(f"Loaded {len(domains)} domains to check: {', '.join(domains)}")
         return domains
     
