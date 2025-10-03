@@ -17,6 +17,14 @@ from typing import List, Optional
 from datetime import datetime
 
 # No whois library used — DNS resolution only
+# Try to use dnspython for better DNS checks (detect registered domains without A/AAAA)
+try:
+    import dns.resolver
+    import dns.exception
+    HAS_DNSPY = True
+except Exception:
+    HAS_DNSPY = False
+    # We'll log a warning later if needed; avoid printing during import-time in libraries
 
 
 # Configure logging
@@ -101,7 +109,88 @@ class DomainChecker:
         try:
             logger.info(f"Checking domain: {domain}")
 
-            # Try to resolve the domain: if it resolves, it's likely taken
+            # Prefer dnspython if available — it lets us query record types and detect NXDOMAIN
+            if HAS_DNSPY:
+                resolver = dns.resolver.Resolver()
+                # keep queries reasonably short
+                resolver.timeout = 5
+                resolver.lifetime = 5
+
+                # 1) Check A record
+                try:
+                    answers = resolver.resolve(domain, 'A')
+                    if answers.rrset is not None:
+                        logger.info(f"Domain {domain} has A records -> not available")
+                        return False
+                except dns.resolver.NXDOMAIN:
+                    logger.info(f"Domain {domain} NXDOMAIN -> available")
+                    return True
+                except dns.resolver.NoAnswer:
+                    # No A record, but domain may still be registered
+                    pass
+                except dns.resolver.NoNameservers as e:
+                    logger.warning(f"No nameservers for {domain}: {e}")
+                    return None
+                except Exception as e:
+                    logger.warning(f"dns A lookup error for {domain}: {e}")
+
+                # 2) Check AAAA record
+                try:
+                    answers = resolver.resolve(domain, 'AAAA')
+                    if answers.rrset is not None:
+                        logger.info(f"Domain {domain} has AAAA records -> not available")
+                        return False
+                except dns.resolver.NXDOMAIN:
+                    logger.info(f"Domain {domain} NXDOMAIN -> available")
+                    return True
+                except dns.resolver.NoAnswer:
+                    # No AAAA record
+                    pass
+                except dns.resolver.NoNameservers as e:
+                    logger.warning(f"No nameservers for {domain}: {e}")
+                    return None
+                except Exception as e:
+                    logger.warning(f"dns AAAA lookup error for {domain}: {e}")
+
+                # 3) If there are no A/AAAA answers, try NS (or SOA) to detect a registered domain
+                try:
+                    answers = resolver.resolve(domain, 'NS')
+                    if answers.rrset is not None:
+                        logger.info(f"Domain {domain} has NS records (registered, but no A/AAAA)")
+                        return False
+                except dns.resolver.NXDOMAIN:
+                    logger.info(f"Domain {domain} NXDOMAIN -> available")
+                    return True
+                except dns.resolver.NoAnswer:
+                    # No NS in answer — continue to SOA check
+                    pass
+                except dns.resolver.NoNameservers as e:
+                    logger.warning(f"No nameservers for {domain}: {e}")
+                    return None
+                except Exception as e:
+                    logger.warning(f"dns NS lookup error for {domain}: {e}")
+
+                # 4) As a last DNS check try SOA
+                try:
+                    answers = resolver.resolve(domain, 'SOA')
+                    if answers.rrset is not None:
+                        logger.info(f"Domain {domain} has SOA record (registered, but no A/AAAA)")
+                        return False
+                except dns.resolver.NXDOMAIN:
+                    logger.info(f"Domain {domain} NXDOMAIN -> available")
+                    return True
+                except dns.resolver.NoAnswer:
+                    # No SOA either — ambiguous
+                    logger.warning(f"No DNS answers for {domain}; unable to determine registration with DNS-only checks")
+                    return None
+                except dns.resolver.NoNameservers as e:
+                    logger.warning(f"No nameservers for {domain}: {e}")
+                    return None
+                except Exception as e:
+                    logger.warning(f"dns SOA lookup error for {domain}: {e}")
+                    return None
+
+            # Fallback: use socket to check resolution (simple A lookup)
             try:
                 socket.gethostbyname(domain)
                 logger.info(f"Domain {domain} resolves to an IP address (likely taken)")
